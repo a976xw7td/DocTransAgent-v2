@@ -178,17 +178,12 @@ class GMIClient:
 
     # ── Embedding ───────────────────────────────────────────────
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings: remote API > local BGE-M3."""
+        """Generate embeddings: SiliconFlow API > local BGE-M3."""
         if settings.embed_provider == "siliconflow" and settings.embed_api_key:
             try:
                 return await _remote_embed(texts, settings.embed_base_url, settings.embed_api_key, settings.embed_model)
             except Exception as exc:
                 logger.warning("SiliconFlow embedding failed, trying local: %s", exc)
-        if settings.embed_provider == "ark" and settings.embed_api_key:
-            try:
-                return await _remote_embed(texts, settings.gmi_base_url, settings.gmi_api_key, settings.llm_embed)
-            except Exception as exc:
-                logger.warning("Ark embedding failed, trying local: %s", exc)
         return _local_embed(texts)
 
     async def embed_single(self, text: str) -> list[float]:
