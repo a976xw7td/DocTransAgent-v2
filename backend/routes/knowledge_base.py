@@ -16,6 +16,21 @@ router = APIRouter(prefix="/api/kb", tags=["knowledge_base"])
 settings = get_settings()
 
 
+@router.post("/index/batch")
+async def batch_index(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Index all translated documents into the knowledge base."""
+    docs = db.query(Document).filter(Document.status == DocStatus.TRANSLATED).all()
+    if not docs:
+        return {"status": "no_docs", "count": 0}
+    doc_ids = []
+    for doc in docs:
+        background_tasks.add_task(_run_indexing, doc.id)
+        doc.status = DocStatus.INDEXING
+        doc_ids.append(doc.id)
+    db.commit()
+    return {"status": "indexing_started", "count": len(doc_ids), "doc_ids": doc_ids}
+
+
 @router.post("/index/{doc_id}")
 async def index_document(doc_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Index a translated document into the knowledge base."""

@@ -42,6 +42,19 @@ class TranslationOrchestrator:
             total=total, completed=0, failed=0, status="running"
         )
 
+        # Translate headings
+        unique_headings = list(dict.fromkeys(
+            c["heading"] for c in chunked if c["heading"]
+        ))
+        translated_headings: dict[str, str] = {}
+        for heading in unique_headings:
+            try:
+                result = await gmi.translate(heading, source_lang, target_lang, glossary)
+                translated_headings[heading] = result["translated_text"]
+            except Exception as e:
+                logger.warning(f"Heading translation failed for '{heading}': {e}")
+                translated_headings[heading] = heading
+
         results: List[dict] = []
 
         async def translate_one(idx: int, item: dict) -> dict:
@@ -69,7 +82,7 @@ class TranslationOrchestrator:
         results = await asyncio.gather(*tasks)
 
         # Reassemble sections
-        translated_sections = _reassemble_sections(results)
+        translated_sections = _reassemble_sections(results, translated_headings)
         total_tokens_input = sum(r.get("tokens_input", 0) for r in results)
         total_tokens_output = sum(r.get("tokens_output", 0) for r in results)
         failed = sum(1 for r in results if r["status"] == "error")
@@ -89,8 +102,9 @@ class TranslationOrchestrator:
         return self.progress.get(doc_id)
 
 
-def _reassemble_sections(chunk_results: List[dict]) -> List[dict]:
-    """Reassemble translated chunks back into sections, preserving duplicate headings."""
+def _reassemble_sections(chunk_results: List[dict], translated_headings: dict[str, str] = None) -> List[dict]:
+    """Reassemble translated chunks back into sections, using translated headings if available."""
+    heading_map = translated_headings or {}
     ordered: List[dict] = []
     lookup: dict[str, List[dict]] = {}
     seen_headings: dict[str, int] = {}
@@ -108,7 +122,6 @@ def _reassemble_sections(chunk_results: List[dict]) -> List[dict]:
         if not chunks_list or chunks_list[0]["level"] == r["level"]:
             chunks_list.append(r)
         else:
-            # Different level — treat as separate section with an indexed key
             key = f"{heading}___{seen_headings[heading]}"
             lookup[key] = [r]
             ordered.append(key)
@@ -116,13 +129,14 @@ def _reassemble_sections(chunk_results: List[dict]) -> List[dict]:
     result = []
     for key in ordered:
         chunks_list = lookup[key]
-        display_heading = key.split("___")[0] if "___" in key else key
+        orig_heading = key.split("___")[0] if "___" in key else key
+        translated_heading = heading_map.get(orig_heading, orig_heading)
         content = "\n\n".join(
             (c.get("translated_content") or c.get("content") or "")
             for c in sorted(chunks_list, key=lambda x: x["chunk_index"])
         )
         result.append({
-            "heading": display_heading,
+            "heading": translated_heading,
             "level": chunks_list[0]["level"],
             "content": content,
         })

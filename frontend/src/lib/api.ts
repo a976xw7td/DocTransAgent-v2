@@ -58,6 +58,8 @@ export const translationApi = {
 export const kbApi = {
   index: (docId: string) =>
     request<any>(`/api/kb/index/${docId}`, { method: "POST" }),
+  batchIndex: () =>
+    request<any>("/api/kb/index/batch", { method: "POST" }),
   search: (q: string, topK = 10) =>
     request<any>(`/api/kb/search?q=${encodeURIComponent(q)}&top_k=${topK}`),
   stats: () => request<any>("/api/kb/stats"),

@@ -95,6 +95,8 @@ class GMIClient:
             "You are an expert assistant for overseas business expansion. "
             "Answer the user's question using ONLY the document contexts provided below. "
             "Always cite sources in your answer as [Source N]. "
+            "Use clear paragraph breaks. Do not use markdown formatting characters like **, #, or bullet points. "
+            "Write in natural flowing prose with one idea per paragraph. "
             "If the contexts do not contain enough information, say so clearly. "
             "Be concise but comprehensive."
         )
@@ -124,17 +126,19 @@ class GMIClient:
     async def ask_stream(
         self, question: str, contexts: List[str], history: Optional[List[dict]] = None
     ) -> AsyncGenerator[str, None]:
-        ctx_text = "\n\n---\n\n".join(
-            f"[Source {i+1}] {c}" for i, c in enumerate(contexts)
-        )
         system_msg = (
             "You are an expert assistant for overseas business expansion. "
-            "Answer using ONLY the provided document contexts. Cite sources as [Source N]. "
+            "Answer using ONLY the provided document contexts. "
+            "Always cite sources as [Source N]. "
+            "Use clear paragraph breaks. No markdown formatting. "
             "If unsure, say so."
         )
         messages = [{"role": "system", "content": system_msg}]
         if history:
             messages.extend(history)
+        ctx_text = "\n\n---\n\n".join(
+            c for i, c in enumerate(contexts)
+        )
         messages.append({"role": "user", "content": f"Contexts:\n{ctx_text}\n\nQuestion: {question}"})
 
         stream = await self.client.chat.completions.create(
@@ -174,12 +178,17 @@ class GMIClient:
 
     # ── Embedding ───────────────────────────────────────────────
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings: SiliconFlow API > local BGE-M3."""
+        """Generate embeddings: remote API > local BGE-M3."""
         if settings.embed_provider == "siliconflow" and settings.embed_api_key:
             try:
-                return await _siliconflow_embed(texts)
+                return await _remote_embed(texts, settings.embed_base_url, settings.embed_api_key, settings.embed_model)
             except Exception as exc:
                 logger.warning("SiliconFlow embedding failed, trying local: %s", exc)
+        if settings.embed_provider == "ark" and settings.embed_api_key:
+            try:
+                return await _remote_embed(texts, settings.gmi_base_url, settings.gmi_api_key, settings.llm_embed)
+            except Exception as exc:
+                logger.warning("Ark embedding failed, trying local: %s", exc)
         return _local_embed(texts)
 
     async def embed_single(self, text: str) -> list[float]:
@@ -340,28 +349,29 @@ def _is_local_bge_ready() -> bool:
     return False
 
 
-async def _siliconflow_embed(texts: list[str]) -> list[list[float]]:
-    """Call SiliconFlow embedding API (OpenAI-compatible)."""
+async def _remote_embed(texts: list[str], base_url: str, api_key: str, model: str) -> list[list[float]]:
+    """Call any OpenAI-compatible embedding API."""
     import httpx
 
-    url = f"{settings.embed_base_url}/embeddings"
+    url = f"{base_url}/embeddings"
     headers = {
-        "Authorization": f"Bearer {settings.embed_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, json={
-            "model": settings.embed_model,
+            "model": model,
             "input": texts,
         }, headers=headers)
 
         if resp.status_code != 200:
-            raise RuntimeError(f"SiliconFlow returned {resp.status_code}: {resp.text[:200]}")
+            raise RuntimeError(f"Embedding API returned {resp.status_code}: {resp.text[:200]}")
 
         data = resp.json()
         embeddings = [item["embedding"] for item in data["data"]]
-        logger.info("SiliconFlow embedding: %d vectors, %d dim", len(embeddings), len(embeddings[0]))
+        provider = base_url.split("//")[1].split(".")[0]
+        logger.info("%s embedding: %d vectors, %d dim", provider, len(embeddings), len(embeddings[0]))
         return embeddings
 
 

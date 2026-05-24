@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { documentsApi, exportApi, glossaryApi } from "@/lib/api";
-import { ModelBadge, StatusBadge } from "@/components/Badges";
+import { StatusBadge } from "@/components/Badges";
 
 interface Section {
   heading: string;
@@ -113,12 +113,6 @@ export default function TranslateReviewPage() {
             <span>{doc.source_lang?.toUpperCase()} → {doc.target_lang?.toUpperCase()}</span>
             <span>·</span>
             <span>{doc.word_count?.toLocaleString()} {t("translate.words")}</span>
-            {hasTranslation && (
-              <>
-                <span>·</span>
-                <ModelBadge model="Gemini 3.1 Flash" latency={234} tokens={1204} />
-              </>
-            )}
           </div>
         </div>
         {hasTranslation && (
@@ -241,7 +235,6 @@ export default function TranslateReviewPage() {
                 {doc.target_lang?.toUpperCase()}
               </span>
               <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{t("common.translation")}</span>
-              {hasTranslation && <ModelBadge model="Gemini 3.1 Flash" latency={234} />}
             </div>
             <div className="p-6 space-y-6">
               {hasTranslation ? (
@@ -326,7 +319,6 @@ export default function TranslateReviewPage() {
                     {doc.target_lang?.toUpperCase()}
                   </span>
                   <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{t("common.translation")}</span>
-                  {hasTranslation && <ModelBadge model="Gemini 3.1 Flash" latency={234} />}
                 </div>
                 {hasTranslation && translated[activeSection] ? (
                   <>
@@ -358,35 +350,7 @@ export default function TranslateReviewPage() {
         </>
       )}
 
-      {/* Model pipeline summary */}
-      {hasTranslation && (
-        <div className="rounded-xl p-6 border" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-2 h-2 rounded-full" style={{ background: "var(--success)" }} />
-            <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{t("translate.pipeline_title")}</span>
-          </div>
-          <div className="grid grid-cols-4 gap-3 text-xs">
-            {[
-              { model: "GPT-5.4-Nano", task: t("translate.pipeline_structure"), status: "completed", ms: 145 },
-              { model: "Gemini 3.1 Flash", task: t("translate.pipeline_translate", { count: doc.chunk_count || "?" }), status: "completed", ms: 234 },
-              { model: "Qwen3-Embedding", task: t("translate.pipeline_embed"), status: doc.status === "indexed" ? "completed" : "pending", ms: 312 },
-              { model: "DeepSeek V4 Pro", task: t("translate.pipeline_rag"), status: doc.status === "indexed" ? "ready" : "pending", ms: null },
-            ].map((item) => (
-              <div key={item.model} className="rounded-lg p-3" style={{ background: "var(--bg)" }}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ background: item.status === "completed" || item.status === "ready" ? "var(--success)" : "var(--text-muted)" }}
-                  />
-                  <span className="font-medium" style={{ color: "var(--text)" }}>{item.model}</span>
-                </div>
-                <div style={{ color: "var(--text-muted)" }}>{item.task}</div>
-                {item.ms && <div className="mt-1" style={{ color: "var(--text-muted)" }}>{item.ms}ms</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

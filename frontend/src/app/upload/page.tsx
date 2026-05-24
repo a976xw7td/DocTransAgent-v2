@@ -126,6 +126,7 @@ export default function UploadPage() {
   const [clearingAll, setClearingAll] = useState(false);
   const [batchLang, setBatchLang] = useState("en");
   const [batchTranslating, setBatchTranslating] = useState(false);
+  const [batchIndexing, setBatchIndexing] = useState(false);
 
   const handleBatchTranslate = async () => {
     const eligible = docs.filter((d) => ["uploaded", "parsed"].includes(d.status));
@@ -155,6 +156,21 @@ export default function UploadPage() {
       await documentsApi.clearAll();
       setDocs([]);
     } catch {} finally { setClearingAll(false); }
+  };
+
+  const handleBatchIndex = async () => {
+    const eligible = docs.filter((d) => d.status === "translated");
+    if (eligible.length === 0) { alert(t("upload.no_translated")); return; }
+    if (!window.confirm(t("upload.confirm_batch_index", { count: eligible.length }))) return;
+    setBatchIndexing(true);
+    try {
+      await kbApi.batchIndex();
+      await loadDocs();
+    } catch (err) {
+      alert(t("common.error") + ": " + (err instanceof Error ? err.message : t("common.error")));
+    } finally {
+      setBatchIndexing(false);
+    }
   };
 
   const [previewDoc, setPreviewDoc] = useState<any>(null);
@@ -218,6 +234,18 @@ export default function UploadPage() {
                 ) : t("upload.batch_translate")}
               </button>
             </div>
+          )}
+          {docs.some((d) => d.status === "translated") && (
+            <button
+              onClick={handleBatchIndex}
+              disabled={batchIndexing}
+              className="btn-secondary text-sm flex items-center gap-1.5"
+              style={{ padding: "5px 14px", color: "var(--success)", borderColor: "var(--success)" }}
+            >
+              {batchIndexing ? (
+                <><span className="w-3 h-3 rounded-full border-2 border-green-500/30 border-t-green-500 animate-spin" />{t("upload.indexing")}</>
+              ) : t("upload.batch_index")}
+            </button>
           )}
           {docs.length > 0 && (
             <button

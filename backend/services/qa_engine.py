@@ -44,6 +44,13 @@ async def ask(
 
     contexts = [r["text"] for r in retrieved]
 
+    # Build context with document titles for better citation
+    contexts_with_titles: list[str] = []
+    for i, r in enumerate(retrieved):
+        meta = r.get("metadata", {})
+        title = meta.get("title") or meta.get("doc_id", "")[:30]
+        contexts_with_titles.append(f"[Source {i+1} — {title}]\n{r['text']}")
+
     # --- graph retrieval step (optional enhancement) ---
     graph_text = ""
     graph_nodes_for_response: list[dict] = []
@@ -76,11 +83,11 @@ async def ask(
 
     # Prepend graph context before text contexts (so the model sees structured knowledge first)
     if graph_text:
-        contexts.insert(0, graph_text)
+        contexts_with_titles.insert(0, graph_text)
 
     history = _conversations.get(session_id, [])[-6:]
 
-    result = await gmi.ask_with_context(question, contexts, history)
+    result = await gmi.ask_with_context(question, contexts_with_titles, history)
 
     citations = _extract_citations(retrieved, result["answer"])
 
@@ -114,7 +121,11 @@ async def ask_stream(
 ) -> AsyncGenerator[str, None]:
     """Streaming RAG Q&A with SSE."""
     retrieved = await search(question, top_k=top_k)
-    contexts = [r["text"] for r in retrieved]
+    contexts = []
+    for i, r in enumerate(retrieved):
+        meta = r.get("metadata", {})
+        title = meta.get("title") or meta.get("doc_id", "")[:30]
+        contexts.append(f"[Source {i+1} — {title}]\n{r['text']}")
     history = _conversations.get(session_id, [])[-6:]
 
     # Stream tokens
