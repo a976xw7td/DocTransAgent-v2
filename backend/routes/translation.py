@@ -1,6 +1,7 @@
 """Translation routes — trigger translation, check progress, review."""
 import logging
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Document, DocStatus, UsageLog
@@ -12,6 +13,36 @@ from config import get_settings
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/translate", tags=["translation"])
 settings = get_settings()
+
+
+class BatchTranslateRequest(BaseModel):
+    target_lang: str = "en"
+
+
+@router.post("/batch")
+async def batch_translate(
+    req: BatchTranslateRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Start translation for all documents in uploaded/parsed status."""
+    eligible = (
+        db.query(Document)
+        .filter(Document.status.in_([DocStatus.UPLOADED, DocStatus.PARSED]))
+        .all()
+    )
+    if not eligible:
+        return {"started": 0, "message": "没有可翻译的文档"}
+
+    started_ids = []
+    for doc in eligible:
+        doc.target_lang = req.target_lang
+        doc.status = DocStatus.TRANSLATING
+        background_tasks.add_task(_run_translation_pipeline, doc.id)
+        started_ids.append(doc.id)
+
+    db.commit()
+    return {"started": len(started_ids), "doc_ids": started_ids, "target_lang": req.target_lang}
 
 
 @router.post("/{doc_id}")

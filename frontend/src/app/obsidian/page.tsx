@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { obsidianApi, graphApi } from "@/lib/api";
 import Link from "next/link";
 
 export default function ObsidianImportPage() {
+  const { t, i18n } = useTranslation();
   const [vaultPath, setVaultPath] = useState("");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -13,6 +15,8 @@ export default function ObsidianImportPage() {
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchState = useCallback(async () => {
@@ -33,7 +37,7 @@ export default function ObsidianImportPage() {
       setResult(res);
       await fetchState();
     } catch (e: any) {
-      setError(e.message || "导入失败");
+      setError(e.message || t("common.error"));
     } finally { setImporting(false); }
   };
 
@@ -46,14 +50,40 @@ export default function ObsidianImportPage() {
       setUploadedFiles([]);
       await fetchState();
     } catch (e: any) {
-      setError(e.message || "导入失败");
+      setError(e.message || t("common.error"));
     } finally { setImporting(false); }
   };
 
   const handleFiles = (files: FileList | File[]) => {
     const mdFiles = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".md"));
-    if (mdFiles.length === 0) { setError("请选择 .md 文件"); return; }
+    if (mdFiles.length === 0) { setError(t("common.error")); return; }
     setUploadedFiles(mdFiles); setError(""); setResult(null);
+  };
+
+  const handleDeleteImport = async (importId: string) => {
+    if (!window.confirm(t("obsidian.delete_confirm"))) return;
+    setDeletingId(importId);
+    try {
+      await obsidianApi.deleteImport(importId);
+      await fetchState();
+    } catch (e: any) {
+      alert(t("common.error") + ": " + (e.message ?? t("common.error")));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAllImports = async () => {
+    if (!window.confirm(t("obsidian.clear_confirm", { count: recentImports.length }))) return;
+    setClearingAll(true);
+    try {
+      await obsidianApi.clearImports();
+      await fetchState();
+    } catch (e: any) {
+      alert(t("common.error") + ": " + (e.message ?? t("common.error")));
+    } finally {
+      setClearingAll(false);
+    }
   };
 
   const nodeTypes = graphStats?.nodes_by_type || {};
@@ -61,10 +91,10 @@ export default function ObsidianImportPage() {
   const hasGraph = graphStats && (graphStats.nodes_total > 0);
 
   const statCards = [
-    { label: "节点",  value: graphStats?.nodes_total ?? 0 },
-    { label: "边",    value: graphStats?.edges_total ?? 0 },
-    { label: "笔记",  value: nodeTypes.note ?? 0 },
-    { label: "标签",  value: nodeTypes.tag ?? 0 },
+    { labelKey: "node_label",  value: graphStats?.nodes_total ?? 0 },
+    { labelKey: "edge_label",    value: graphStats?.edges_total ?? 0 },
+    { labelKey: "note_label",  value: nodeTypes.note ?? 0 },
+    { labelKey: "tag_label",  value: nodeTypes.tag ?? 0 },
   ];
 
   return (
@@ -74,15 +104,15 @@ export default function ObsidianImportPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>
-            知识导入
+            {t("obsidian.page_title")}
           </h1>
           <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-            导入 Obsidian 笔记库，构建多语言知识图谱
+            {t("obsidian.page_subtitle")}
           </p>
         </div>
         {hasGraph && (
           <Link href="/graph" className="btn-secondary text-sm">
-            探索图谱
+            {t("obsidian.explore_graph")}
           </Link>
         )}
       </div>
@@ -93,7 +123,7 @@ export default function ObsidianImportPage() {
         <div className="lg:col-span-3 space-y-4">
           <div className="card">
             <h2 className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: "var(--text-faint)", letterSpacing: "0.08em" }}>
-              导入笔记
+              {t("obsidian.import_title")}
             </h2>
 
             {/* Drop zone */}
@@ -125,7 +155,7 @@ export default function ObsidianImportPage() {
               {uploadedFiles.length > 0 ? (
                 <div>
                   <div className="text-sm font-semibold mb-1" style={{ color: "var(--primary)" }}>
-                    已选 {uploadedFiles.length} 个文件
+                    {t("obsidian.files_selected", { count: uploadedFiles.length })}
                   </div>
                   <div className="text-xs max-h-24 overflow-y-auto space-y-0.5" style={{ color: "var(--text-muted)" }}>
                     {uploadedFiles.map((f, i) => <div key={i} className="truncate">{f.name}</div>)}
@@ -135,16 +165,16 @@ export default function ObsidianImportPage() {
                     className="text-xs underline mt-2"
                     style={{ color: "var(--text-faint)" }}
                   >
-                    清除
+                    {t("common.clear")}
                   </button>
                 </div>
               ) : (
                 <>
                   <div className="text-sm font-medium" style={{ color: "var(--text)" }}>
-                    拖拽 .md 文件到这里
+                    {t("obsidian.drop_hint")}
                   </div>
                   <div className="text-xs mt-1" style={{ color: "var(--text-faint)" }}>
-                    或点击选择 · 支持批量上传
+                    {t("obsidian.drop_subtitle")}
                   </div>
                 </>
               )}
@@ -157,15 +187,15 @@ export default function ObsidianImportPage() {
                 className="btn-primary w-full justify-center mt-3"
               >
                 {importing ? (
-                  <><span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> 导入中...</>
-                ) : `导入 ${uploadedFiles.length} 个文件`}
+                  <><span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> {t("obsidian.importing")}</>
+                ) : t("obsidian.import_btn", { count: uploadedFiles.length })}
               </button>
             )}
 
             {/* Divider */}
             <div className="flex items-center gap-3 my-4">
               <div className="flex-1" style={{ borderTop: "1px solid var(--border-light)" }} />
-              <span className="text-xs" style={{ color: "var(--text-faint)" }}>或输入路径</span>
+              <span className="text-xs" style={{ color: "var(--text-faint)" }}>{t("obsidian.or_path")}</span>
               <div className="flex-1" style={{ borderTop: "1px solid var(--border-light)" }} />
             </div>
 
@@ -175,7 +205,7 @@ export default function ObsidianImportPage() {
                 type="text"
                 value={vaultPath}
                 onChange={(e) => setVaultPath(e.target.value)}
-                placeholder="/path/to/obsidian/vault"
+                placeholder={t("obsidian.path_placeholder")}
                 className="input flex-1"
                 onKeyDown={(e) => e.key === "Enter" && handleImport()}
               />
@@ -184,7 +214,7 @@ export default function ObsidianImportPage() {
                 disabled={importing || !vaultPath.trim()}
                 className="btn-primary"
               >
-                {importing ? "导入中..." : "导入"}
+                {importing ? t("obsidian.importing") : t("obsidian.import_path_btn")}
               </button>
             </div>
 
@@ -207,8 +237,8 @@ export default function ObsidianImportPage() {
                 }}
               >
                 {result.status === "completed"
-                  ? `成功导入 ${result.imported_count} 篇笔记`
-                  : `状态：${result.status}`}
+                  ? t("obsidian.import_success", { count: result.imported_count })
+                  : `${t("common.loading")}: ${result.status}`}
               </div>
             )}
           </div>
@@ -219,14 +249,14 @@ export default function ObsidianImportPage() {
           {/* Overview numbers */}
           <div className="grid grid-cols-2 gap-3">
             {statCards.map((s) => (
-              <div key={s.label} className="card-sm text-center">
+              <div key={s.labelKey} className="card-sm text-center">
                 <div
                   className="text-2xl font-semibold tabular-nums"
                   style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}
                 >
                   {s.value}
                 </div>
-                <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{s.label}</div>
+                <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{t(`obsidian.${s.labelKey}`)}</div>
               </div>
             ))}
           </div>
@@ -235,7 +265,7 @@ export default function ObsidianImportPage() {
           {Object.keys(nodeTypes).length > 0 && (
             <div className="card">
               <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--text-faint)", letterSpacing: "0.08em" }}>
-                节点类型
+                {t("obsidian.node_types_title")}
               </h2>
               <div className="space-y-1">
                 {Object.entries(nodeTypes).map(([type, count]) => (
@@ -258,7 +288,7 @@ export default function ObsidianImportPage() {
           {Object.keys(edgeRelations).length > 0 && (
             <div className="card">
               <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--text-faint)", letterSpacing: "0.08em" }}>
-                关系类型
+                {t("obsidian.edge_types_title")}
               </h2>
               <div className="space-y-1">
                 {Object.entries(edgeRelations).map(([rel, count]) => (
@@ -282,9 +312,19 @@ export default function ObsidianImportPage() {
       {/* Recent imports */}
       {recentImports.length > 0 && (
         <div className="card">
-          <h2 className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: "var(--text-faint)", letterSpacing: "0.08em" }}>
-            导入记录
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-faint)", letterSpacing: "0.08em" }}>
+              {t("obsidian.import_records_title")}
+            </h2>
+            <button
+              onClick={handleClearAllImports}
+              disabled={clearingAll}
+              className="text-xs px-3 py-1 rounded-md border transition-colors"
+              style={{ borderColor: "var(--border)", color: clearingAll ? "var(--text-faint)" : "var(--danger, #e11d48)" }}
+            >
+              {clearingAll ? t("common.clearing") : t("obsidian.clear_all")}
+            </button>
+          </div>
           <div className="space-y-1.5">
             {recentImports.map((imp: any) => (
               <div
@@ -292,7 +332,7 @@ export default function ObsidianImportPage() {
                 className="flex items-center justify-between px-4 py-3 rounded-lg text-sm"
                 style={{ background: "var(--bg)" }}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <span
                     className="w-2 h-2 rounded-full flex-shrink-0"
                     style={{
@@ -302,14 +342,31 @@ export default function ObsidianImportPage() {
                         : "var(--warning)",
                     }}
                   />
-                  <span className="text-sm font-medium truncate max-w-xs" style={{ color: "var(--text)" }}>
-                    {imp.source_path}
+                  <span className="text-sm font-medium truncate" style={{ color: "var(--text)", maxWidth: 260 }}>
+                    {imp.source_path.split("/").pop() || imp.source_path}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-xs flex-shrink-0" style={{ color: "var(--text-faint)" }}>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>{imp.imported_count} 篇</span>
-                  <span>{imp.status}</span>
-                  {imp.created_at && <span>{new Date(imp.created_at).toLocaleDateString("zh-CN")}</span>}
+                <div className="flex items-center gap-3 text-xs flex-shrink-0" style={{ color: "var(--text-faint)" }}>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{imp.imported_count}{t("obsidian.items")}</span>
+                  <span style={{
+                    color: imp.status === "completed" ? "var(--success)"
+                      : imp.status === "error" ? "var(--error)" : "var(--warning)"
+                  }}>
+                    {imp.status === "completed" ? t("obsidian.status_completed") : imp.status === "error" ? t("obsidian.status_error") : t("obsidian.status_processing")}
+                  </span>
+                  {imp.created_at && (
+                    <span>{new Date(imp.created_at).toLocaleDateString(i18n.language === "zh" ? "zh-CN" : "en-US")}</span>
+                  )}
+                  <button
+                    onClick={() => handleDeleteImport(imp.id)}
+                    disabled={deletingId === imp.id}
+                    className="text-xs px-2 py-0.5 rounded transition-colors"
+                    style={{ color: "var(--text-faint)" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--error)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-faint)"; }}
+                  >
+                    {deletingId === imp.id ? t("common.deleting") : t("common.delete")}
+                  </button>
                 </div>
               </div>
             ))}
@@ -320,7 +377,7 @@ export default function ObsidianImportPage() {
       {recentImports.length === 0 && !hasGraph && (
         <div className="card text-center py-8">
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            还没有导入记录。在上方拖入 .md 文件或输入笔记库路径开始导入。
+            {t("obsidian.empty_hint")}
           </p>
         </div>
       )}

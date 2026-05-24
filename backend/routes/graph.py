@@ -3,11 +3,13 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import GraphNode, GraphEdge, SourceImport
+from gmi_client import gmi
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/graph", tags=["graph"])
@@ -147,6 +149,90 @@ async def get_node(node_id: str, db: Session = Depends(get_db)):
         "outgoing_edges": [_edge_dict(e) for e in outgoing],
         "incoming_edges": [_edge_dict(e) for e in incoming],
     }
+
+
+class TranslateRequest(BaseModel):
+    target_lang: str = "en"
+
+
+@router.post("/nodes/{node_id}/translate")
+async def translate_node(node_id: str, req: TranslateRequest, db: Session = Depends(get_db)):
+    """Translate a graph node's content_snippet on demand."""
+    node = db.query(GraphNode).filter(GraphNode.id == node_id).first()
+    if not node:
+        raise HTTPException(404, "Graph node not found")
+
+    text = (node.content_snippet or "").strip()
+    if not text:
+        raise HTTPException(400, "Node has no content to translate")
+
+    try:
+        result = await gmi.translate(text, source_lang="zh", target_lang=req.target_lang)
+    except Exception as e:
+        logger.error(f"Node translation failed for {node_id}: {e}")
+        raise HTTPException(500, f"Translation failed: {e}")
+
+    return {
+        "node_id": node_id,
+        "source_text": text,
+        "translated_text": result["translated_text"],
+        "target_lang": req.target_lang,
+        "latency_ms": result.get("latency_ms"),
+    }
+
+
+@router.get("/all")
+async def get_all_graph(
+    limit: int = Query(500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+):
+    """Return all nodes and edges for full-graph visualization."""
+
+    nodes = db.query(GraphNode).limit(limit).all()
+    node_ids = {n.id for n in nodes}
+
+    edges = (
+        db.query(GraphEdge)
+        .filter(GraphEdge.source_id.in_(node_ids), GraphEdge.target_id.in_(node_ids))
+        .limit(limit * 4)
+        .all()
+    )
+
+    return {
+        "nodes": [
+            {
+                "id": n.id,
+                "node_type": n.node_type,
+                "label": n.label,
+                "stable_key": n.stable_key,
+                "doc_id": n.doc_id,
+                "content_snippet": n.content_snippet,
+                "metadata": n.metadata_,
+            }
+            for n in nodes
+        ],
+        "edges": [
+            {
+                "id": e.id,
+                "source": e.source_id,
+                "target": e.target_id,
+                "relation": e.relation,
+                "weight": e.weight,
+            }
+            for e in edges
+        ],
+    }
+
+
+@router.delete("/clear")
+async def clear_graph(db: Session = Depends(get_db)):
+    """Delete all graph nodes and edges."""
+
+    db.query(GraphEdge).delete()
+    db.query(GraphNode).delete()
+    db.commit()
+
+    return {"status": "ok", "message": "Graph cleared"}
 
 
 @router.get("/neighborhood/{node_id}")

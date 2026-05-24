@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslation } from "react-i18next";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 const navItems = [
   {
     href: "/",
-    label: "仪表盘",
+    labelKey: "dashboard",
     icon: (
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <rect x="1" y="1" width="5.5" height="5.5" rx="1.2" />
@@ -18,7 +20,7 @@ const navItems = [
   },
   {
     href: "/upload",
-    label: "文档管理",
+    labelKey: "documents",
     icon: (
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M8.5 1.5H3a1 1 0 00-1 1v10a1 1 0 001 1h9a1 1 0 001-1V6L8.5 1.5z" />
@@ -29,7 +31,7 @@ const navItems = [
   },
   {
     href: "/kb",
-    label: "知识库",
+    labelKey: "kb",
     icon: (
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M2 3.5h11M2 7.5h11M2 11.5h6" />
@@ -40,7 +42,7 @@ const navItems = [
   },
   {
     href: "/qa",
-    label: "智能问答",
+    labelKey: "qa",
     icon: (
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M13 9.5a1 1 0 01-1 1H4.5L2 13V2a1 1 0 011-1h9a1 1 0 011 1v7.5z" />
@@ -49,7 +51,7 @@ const navItems = [
   },
   {
     href: "/glossary",
-    label: "术语表",
+    labelKey: "glossary",
     icon: (
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 1h7a1 1 0 011 1v11a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" />
@@ -59,7 +61,7 @@ const navItems = [
   },
   {
     href: "/obsidian",
-    label: "知识导入",
+    labelKey: "import",
     icon: (
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M7.5 1.5v8M4.5 6.5l3 3 3-3" />
@@ -69,7 +71,7 @@ const navItems = [
   },
   {
     href: "/graph",
-    label: "图谱探索",
+    labelKey: "graph",
     icon: (
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="7.5" cy="7.5" r="1.5" />
@@ -85,6 +87,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { t } = useTranslation();
 
   return (
     <aside
@@ -114,7 +117,7 @@ export default function Sidebar() {
               DocTransAgent
             </div>
             <div className="text-xs" style={{ color: "var(--sidebar-text-dim)" }}>
-              文档智能平台
+              {t("sidebar.subtitle")}
             </div>
           </div>
         </Link>
@@ -123,7 +126,7 @@ export default function Sidebar() {
       <nav className="flex-1 px-2.5 py-4 space-y-0.5 overflow-y-auto">
         <div className="px-2.5 mb-3">
           <span className="text-xs font-semibold" style={{ color: "var(--sidebar-text-dim)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            导航
+            {t("sidebar.nav")}
           </span>
         </div>
         {navItems.map((item) => {
@@ -158,13 +161,13 @@ export default function Sidebar() {
               >
                 {item.icon}
               </span>
-              <span className="font-medium">{item.label}</span>
+              <span className="font-medium">{t(`sidebar.${item.labelKey}`)}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="px-5 py-4" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
+      <div className="px-5 py-4 space-y-3" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
         <div className="flex items-center gap-2">
           <span
             className="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -173,8 +176,9 @@ export default function Sidebar() {
               boxShadow: "0 0 0 4px var(--primary-subtle)",
             }}
           />
-          <span className="text-xs" style={{ color: "var(--sidebar-text-dim)" }}>系统运行正常</span>
+          <span className="text-xs" style={{ color: "var(--sidebar-text-dim)" }}>{t("sidebar.status_ok")}</span>
         </div>
+        <LanguageSwitcher />
       </div>
     </aside>
   );

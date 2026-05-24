@@ -12,6 +12,7 @@ from typing import List
 from config import get_settings
 from database import get_db
 from services.obsidian_importer import import_obsidian_vault, get_imports, get_import_by_id
+from models import GraphNode, GraphEdge, SourceImport
 from services.source_identity import index_document_to_graph
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,75 @@ async def get_import_status(import_id: str, db: Session = Depends(get_db)):
         "created_at": si.created_at.isoformat() if si.created_at else None,
         "completed_at": si.completed_at.isoformat() if si.completed_at else None,
     }
+
+
+@router.delete("/imports")
+async def clear_all_imports(db: Session = Depends(get_db)):
+    """Delete all import records, their graph edges, and all graph nodes."""
+    all_imports = db.query(SourceImport).all()
+    import_ids = [si.id for si in all_imports]
+
+    deleted_edges = 0
+    if import_ids:
+        deleted_edges = (
+            db.query(GraphEdge)
+            .filter(GraphEdge.source_import_id.in_(import_ids))
+            .delete(synchronize_session="fetch")
+        )
+
+    # Also remove any remaining orphan edges
+    db.query(GraphEdge).delete(synchronize_session="fetch")
+    deleted_nodes = db.query(GraphNode).delete(synchronize_session="fetch")
+    deleted_imports = db.query(SourceImport).delete(synchronize_session="fetch")
+    db.commit()
+
+    return {
+        "status": "cleared",
+        "imports_removed": deleted_imports,
+        "edges_removed": deleted_edges,
+        "nodes_removed": deleted_nodes,
+    }
+
+
+@router.delete("/imports/{import_id}")
+async def delete_import(import_id: str, db: Session = Depends(get_db)):
+    """Delete an import record, its graph edges, and nodes that came from it."""
+    si = db.query(SourceImport).filter(SourceImport.id == import_id).first()
+    if not si:
+        raise HTTPException(404, "Import not found")
+
+    # Collect edge IDs from this import to find affected nodes
+    edges = (
+        db.query(GraphEdge)
+        .filter(GraphEdge.source_import_id == import_id)
+        .all()
+    )
+    node_ids = set()
+    for e in edges:
+        node_ids.add(e.source_id)
+        node_ids.add(e.target_id)
+
+    # Delete edges from this import
+    deleted_edges = (
+        db.query(GraphEdge)
+        .filter(GraphEdge.source_import_id == import_id)
+        .delete(synchronize_session="fetch")
+    )
+
+    # Delete nodes that are no longer connected to any edge
+    orphan_nodes = 0
+    for node_id in node_ids:
+        still_connected = db.query(GraphEdge).filter(
+            (GraphEdge.source_id == node_id) | (GraphEdge.target_id == node_id)
+        ).first()
+        if not still_connected:
+            db.query(GraphNode).filter(GraphNode.id == node_id).delete(synchronize_session="fetch")
+            orphan_nodes += 1
+
+    db.delete(si)
+    db.commit()
+
+    return {"status": "deleted", "import_id": import_id, "edges_removed": deleted_edges, "nodes_removed": orphan_nodes}
 
 
 @router.post("/documents/{doc_id}")

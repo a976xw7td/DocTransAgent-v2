@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const MODEL_ROLES = [
-  { key: "translate", role: "翻译" },
-  { key: "qa",        role: "问答" },
-  { key: "structure", role: "结构化" },
-  { key: "embed",     role: "嵌入" },
+  { key: "translate", roleKey: "translate_role" },
+  { key: "qa",        roleKey: "qa_role" },
+  { key: "structure", roleKey: "structure_role" },
+  { key: "embed",     roleKey: "embed_role" },
 ];
 
 const FRIENDLY_NAMES: Record<string, string> = {
@@ -24,6 +25,7 @@ type HealthStatus = {
 };
 
 export default function GMIStatusBar() {
+  const { t } = useTranslation();
   const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {
@@ -50,12 +52,12 @@ export default function GMIStatusBar() {
         style={{ background: "var(--border)" }}
       />
       <div className="flex items-center gap-4">
-        {MODEL_ROLES.map(({ key, role }) => {
+        {MODEL_ROLES.map(({ key, roleKey }) => {
           const modelId = health?.models?.[key] || "";
           const name = FRIENDLY_NAMES[modelId] || (modelId ? modelId.split("/").pop() : "—");
           return (
             <div key={key} className="flex items-center gap-1.5">
-              <span style={{ color: "var(--text-muted)" }}>{role}</span>
+              <span style={{ color: "var(--text-muted)" }}>{t(`statusbar.${roleKey}`)}</span>
               <span
                 className="px-1.5 py-0.5 rounded"
                 style={{
@@ -73,7 +75,7 @@ export default function GMIStatusBar() {
       </div>
       {health && (
         <div className="ml-auto flex items-center gap-1" style={{ color: "var(--primary)" }}>
-          API Online
+          {t("statusbar.api_online")}
         </div>
       )}
     </div>

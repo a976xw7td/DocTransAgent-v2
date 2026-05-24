@@ -37,6 +37,7 @@ export const documentsApi = {
   list: () => request<any[]>("/api/documents"),
   get: (id: string) => request<any>(`/api/documents/${id}`),
   delete: (id: string) => request<any>(`/api/documents/${id}`, { method: "DELETE" }),
+  clearAll: () => request<any>("/api/documents/clear", { method: "DELETE" }),
 };
 
 // ── Translation ────────────────────────────────────────
@@ -46,6 +47,11 @@ export const translationApi = {
     return request<any>(`/api/translate/${docId}${qs}`, { method: "POST" });
   },
   progress: (docId: string) => request<any>(`/api/translate/${docId}/progress`),
+  batch: (targetLang: string) =>
+    request<any>("/api/translate/batch", {
+      method: "POST",
+      body: JSON.stringify({ target_lang: targetLang }),
+    }),
 };
 
 // ── Knowledge Base ─────────────────────────────────────
@@ -119,6 +125,9 @@ export const obsidianApi = {
   },
   listImports: () => request<any>("/api/sources/imports"),
   getImport: (importId: string) => request<any>(`/api/sources/imports/${importId}`),
+  clearImports: () => request<any>("/api/sources/imports", { method: "DELETE" }),
+  deleteImport: (importId: string) =>
+    request<any>(`/api/sources/imports/${importId}`, { method: "DELETE" }),
   promoteDocument: (docId: string) =>
     request<any>(`/api/sources/documents/${docId}`, { method: "POST" }),
 };
@@ -136,6 +145,13 @@ export const graphApi = {
   },
   node: (nodeId: string) => request<any>(`/api/graph/nodes/${nodeId}`),
   neighborhood: (nodeId: string) => request<any>(`/api/graph/neighborhood/${nodeId}`),
+  all: (limit = 500) => request<any>(`/api/graph/all?limit=${limit}`),
+  translateNode: (nodeId: string, targetLang = "en") =>
+    request<any>(`/api/graph/nodes/${nodeId}/translate`, {
+      method: "POST",
+      body: JSON.stringify({ target_lang: targetLang }),
+    }),
+  clear: () => request<any>("/api/graph/clear", { method: "DELETE" }),
 };
 
 // ── Export ─────────────────────────────────────────────

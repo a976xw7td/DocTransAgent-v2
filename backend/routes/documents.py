@@ -1,6 +1,7 @@
 """Document upload, list, delete routes."""
 import os
 import uuid
+import shutil
 import logging
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -102,6 +103,22 @@ async def get_document(doc_id: str, db: Session = Depends(get_db)):
         "translated_sections": doc.translated_sections,
         "created_at": doc.created_at.isoformat(),
     }
+
+
+@router.delete("/clear")
+async def clear_all_documents(db: Session = Depends(get_db)):
+    """Delete all documents and their uploaded files."""
+
+    docs = db.query(Document).all()
+    for doc in docs:
+        file_path = os.path.join(settings.upload_dir, doc.filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    db.query(Document).delete()
+    db.commit()
+
+    logger.info(f"Cleared all documents ({len(docs)} deleted)")
+    return {"status": "ok", "deleted_count": len(docs)}
 
 
 @router.delete("/{doc_id}")

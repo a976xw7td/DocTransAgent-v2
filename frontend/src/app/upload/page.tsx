@@ -2,34 +2,28 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { documentsApi, translationApi, kbApi } from "@/lib/api";
 import { StatusBadge } from "@/components/Badges";
 import { useTranslationProgress } from "@/hooks/useTranslationProgress";
 
-const LANG_OPTIONS: { code: string; label: string }[] = [
-  { code: "en", label: "English" },
-  { code: "zh", label: "中文" },
-  { code: "ja", label: "日本語" },
-  { code: "ko", label: "한국어" },
-  { code: "fr", label: "Français" },
-  { code: "de", label: "Deutsch" },
-  { code: "es", label: "Español" },
-  { code: "pt", label: "Português" },
-  { code: "ar", label: "العربية" },
-  { code: "ru", label: "Русский" },
+const LANG_OPTIONS: { code: string; labelKey: string }[] = [
+  { code: "en", labelKey: "lang_en" },
+  { code: "zh", labelKey: "lang_zh" },
+  { code: "ja", labelKey: "lang_ja" },
+  { code: "ko", labelKey: "lang_ko" },
+  { code: "fr", labelKey: "lang_fr" },
+  { code: "de", labelKey: "lang_de" },
+  { code: "es", labelKey: "lang_es" },
+  { code: "pt", labelKey: "lang_pt" },
+  { code: "ar", labelKey: "lang_ar" },
+  { code: "ru", labelKey: "lang_ru" },
 ];
 
-const LANG_LABEL: Record<string, string> = Object.fromEntries(
-  LANG_OPTIONS.map((l) => [l.code, l.label])
-);
-
-function langDisplay(code?: string): string {
-  if (!code) return "—";
-  if (code.toLowerCase() === "auto") return "自动";
-  return LANG_LABEL[code.toLowerCase()] || code.toUpperCase();
-}
-
 export default function UploadPage() {
+  const { t } = useTranslation();
+  const router = useRouter();
   const [docs, setDocs] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(new Set());
@@ -48,18 +42,19 @@ export default function UploadPage() {
   useEffect(() => { loadDocs(); }, [loadDocs]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     setUploading(true);
-    try {
-      await documentsApi.upload(file);
-      await loadDocs();
-    } catch (err) {
-      alert("上传失败: " + (err instanceof Error ? err.message : "未知错误"));
-    } finally {
-      setUploading(false);
-      e.target.value = "";
+    for (let i = 0; i < files.length; i++) {
+      try {
+        await documentsApi.upload(files[i]);
+      } catch (err) {
+        alert(`${t("common.error")} (${files[i].name}): ` + (err instanceof Error ? err.message : t("common.error")));
+      }
     }
+    await loadDocs();
+    setUploading(false);
+    e.target.value = "";
   };
 
   const pollDocStatus = (docId: string, expectedStatus: string) => {
@@ -69,7 +64,11 @@ export default function UploadPage() {
         if (doc.status === expectedStatus || doc.status === "error") {
           clearInterval(interval);
           setTranslatingIds((cur) => { const n = new Set(cur); n.delete(docId); return n; });
-          loadDocs();
+          if (doc.status === "translated") {
+            router.push(`/translate/${docId}`);
+          } else {
+            loadDocs();
+          }
         }
       } catch {
         clearInterval(interval);
@@ -94,14 +93,14 @@ export default function UploadPage() {
       loadDocs();
       pollDocStatus(docId, "translated");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "未知错误";
+      const message = err instanceof Error ? err.message : t("common.error");
       if (message.includes("status translating")) {
         startPolling(docId);
         pollDocStatus(docId, "translated");
         return;
       }
       setTranslatingIds((cur) => { const n = new Set(cur); n.delete(docId); return n; });
-      alert("翻译失败: " + message);
+      alert(t("common.translate") + ": " + message);
     }
   };
 
@@ -110,18 +109,66 @@ export default function UploadPage() {
       await kbApi.index(docId);
       pollDocStatus(docId, "indexed");
     } catch (err) {
-      alert("索引失败: " + (err instanceof Error ? err.message : "未知错误"));
+      alert(t("common.error") + ": " + (err instanceof Error ? err.message : t("common.error")));
     }
   };
 
   const handleDelete = async (docId: string) => {
-    if (!confirm("确认删除此文档？")) return;
+    if (!confirm(t("upload.confirm_delete"))) return;
     try {
       await documentsApi.delete(docId);
       loadDocs();
     } catch (err) {
-      alert("删除失败: " + (err instanceof Error ? err.message : "未知错误"));
+      alert(t("common.error") + ": " + (err instanceof Error ? err.message : t("common.error")));
     }
+  };
+
+  const [clearingAll, setClearingAll] = useState(false);
+  const [batchLang, setBatchLang] = useState("en");
+  const [batchTranslating, setBatchTranslating] = useState(false);
+
+  const handleBatchTranslate = async () => {
+    const eligible = docs.filter((d) => ["uploaded", "parsed"].includes(d.status));
+    if (eligible.length === 0) { alert(t("upload.no_eligible")); return; }
+    if (!window.confirm(t("upload.confirm_batch", { count: eligible.length, lang: t(`upload.${LANG_OPTIONS.find(l => l.code === batchLang)?.labelKey ?? "lang_en"}`) }))) return;
+    setBatchTranslating(true);
+    try {
+      const res = await translationApi.batch(batchLang);
+      (res.doc_ids ?? []).forEach((id: string) => {
+        setTranslatingIds((cur) => new Set(cur).add(id));
+        setActiveDocId(id);
+        startPolling(id);
+        pollDocStatus(id, "translated");
+      });
+      await loadDocs();
+    } catch (err) {
+      alert(t("common.error") + ": " + (err instanceof Error ? err.message : t("common.error")));
+    } finally {
+      setBatchTranslating(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm(t("upload.confirm_clear"))) return;
+    setClearingAll(true);
+    try {
+      await documentsApi.clearAll();
+      setDocs([]);
+    } catch {} finally { setClearingAll(false); }
+  };
+
+  const [previewDoc, setPreviewDoc] = useState<any>(null);
+  const [previewSections, setPreviewSections] = useState<any[] | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const handleViewSource = async (docId: string) => {
+    setPreviewLoading(true);
+    setPreviewSections(null);
+    try {
+      const doc = await documentsApi.get(docId);
+      setPreviewDoc(doc);
+      setPreviewSections(doc.sections || []);
+    } catch {} finally { setPreviewLoading(false); }
   };
 
   const paged = docs.slice((page - 1) * pageSize, page * pageSize);
@@ -134,32 +181,76 @@ export default function UploadPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>
-            文档管理
+            {t("upload.page_title")}
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            PDF · DOCX · Markdown · TXT
+            {t("upload.page_subtitle")}
           </p>
         </div>
-        <label className="btn-primary cursor-pointer">
+        <div className="flex items-center gap-3">
+          {docs.some((d) => ["uploaded", "parsed"].includes(d.status)) && (
+            <div className="flex items-center gap-1.5">
+              <select
+                value={batchLang}
+                onChange={(e) => setBatchLang(e.target.value)}
+                disabled={batchTranslating}
+                className="text-xs rounded-md px-2 py-1.5 border"
+                style={{
+                  background: "var(--bg-input)",
+                  borderColor: "var(--border)",
+                  color: "var(--text)",
+                  fontFamily: "var(--font-sans)",
+                  height: 32,
+                }}
+              >
+                {LANG_OPTIONS.map((l) => (
+                  <option key={l.code} value={l.code}>{t(`upload.${l.labelKey}`)}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleBatchTranslate}
+                disabled={batchTranslating}
+                className="btn-secondary text-sm flex items-center gap-1.5"
+                style={{ padding: "5px 14px", color: "var(--primary)", borderColor: "var(--primary)" }}
+              >
+                {batchTranslating ? (
+                  <><span className="w-3 h-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />{t("common.translating")}</>
+                ) : t("upload.batch_translate")}
+              </button>
+            </div>
+          )}
+          {docs.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              disabled={clearingAll}
+              className="btn-secondary text-sm"
+              style={{ padding: "6px 16px", color: "var(--danger, #e11d48)" }}
+            >
+              {clearingAll ? t("upload.clear_all") + "..." : t("upload.clear_all")}
+            </button>
+          )}
+          <label className="btn-primary cursor-pointer">
           {uploading ? (
             <>
               <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              上传中
+              {t("upload.uploading")}
             </>
           ) : (
             <>
               <span style={{ fontSize: "13px" }}>↑</span>
-              上传文档
+              {t("upload.upload_doc")}
             </>
           )}
           <input
             type="file"
             className="hidden"
             accept=".pdf,.docx,.md,.txt"
+            multiple
             onChange={handleUpload}
             disabled={uploading}
           />
         </label>
+      </div>
       </div>
 
       {/* Translation progress */}
@@ -170,10 +261,10 @@ export default function UploadPage() {
         >
           <div className="flex items-center justify-between mb-2">
             <div>
-              <span className="text-sm font-medium" style={{ color: "var(--primary)" }}>翻译进行中</span>
+              <span className="text-sm font-medium" style={{ color: "var(--primary)" }}>{t("upload.translate_progress")}</span>
               <span className="text-xs ml-3" style={{ color: "var(--text-muted)" }}>
-                {progress.completed} / {progress.total} 段完成
-                {progress.failed > 0 && <span style={{ color: "var(--error)" }}> · {progress.failed} 失败</span>}
+                {progress.completed} / {progress.total} {t("upload.sections_completed")}
+                {progress.failed > 0 && <span style={{ color: "var(--error)" }}> · {progress.failed} {t("upload.failed")}</span>}
               </span>
             </div>
             <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--primary)", fontFamily: "var(--font-mono)" }}>
@@ -203,10 +294,10 @@ export default function UploadPage() {
               ↑
             </div>
             <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>
-              还没有文档
+              {t("upload.empty_title")}
             </p>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              上传 PDF、DOCX 或 Markdown 文件，开始多语言翻译流程
+              {t("upload.empty_desc")}
             </p>
           </div>
         ) : (
@@ -214,7 +305,7 @@ export default function UploadPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border-light)" }}>
-                  {["文件名", "类型", "字数", "语言", "状态", "操作"].map((h, i) => (
+                  {["table_filename", "table_type", "table_words", "table_lang", "table_status", "table_actions"].map((h, i) => (
                     <th
                       key={h}
                       className="py-3 px-4 font-medium text-xs uppercase tracking-wide"
@@ -224,7 +315,7 @@ export default function UploadPage() {
                         letterSpacing: "0.06em",
                       }}
                     >
-                      {h}
+                      {t(`upload.${h}`)}
                     </th>
                   ))}
                 </tr>
@@ -257,7 +348,7 @@ export default function UploadPage() {
                         {doc.word_count?.toLocaleString() ?? "—"}
                       </td>
                       <td className="py-3 px-4 text-xs" style={{ color: "var(--text-muted)" }}>
-                        {langDisplay(doc.source_lang)}
+                        {doc.source_lang?.toUpperCase() ?? "—"}
                       </td>
                       <td className="py-3 px-4">
                         <StatusBadge status={doc.status} />
@@ -278,10 +369,18 @@ export default function UploadPage() {
                               }}
                             >
                               {LANG_OPTIONS.map((l) => (
-                                <option key={l.code} value={l.code}>{l.label}</option>
+                                <option key={l.code} value={l.code}>{t(`upload.${l.labelKey}`)}</option>
                               ))}
                             </select>
                           )}
+
+                          <button
+                            onClick={() => handleViewSource(doc.id)}
+                            className="btn-secondary text-xs"
+                            style={{ padding: "5px 12px" }}
+                          >
+                            {t("upload.view_source")}
+                          </button>
 
                           {["uploaded", "parsed", "translating", "parsing"].includes(doc.status) && (
                             <button
@@ -293,9 +392,9 @@ export default function UploadPage() {
                               {isTranslating ? (
                                 <>
                                   <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                                  翻译中
+                                  {t("common.translating")}
                                 </>
-                              ) : "翻译"}
+                              ) : t("common.translate")}
                             </button>
                           )}
 
@@ -305,7 +404,7 @@ export default function UploadPage() {
                               className="btn-secondary text-xs"
                               style={{ padding: "5px 12px", color: "var(--accent)", borderColor: "var(--accent)" }}
                             >
-                              查看
+                              {t("upload.bilingual")}
                             </Link>
                           )}
 
@@ -315,16 +414,16 @@ export default function UploadPage() {
                               className="btn-secondary text-xs"
                               style={{ padding: "5px 12px", color: "var(--success)", borderColor: "var(--success)" }}
                             >
-                              索引
+                              {t("upload.index")}
                             </button>
                           )}
 
                           {doc.status === "indexed" && (
-                            <span className="text-xs" style={{ color: "var(--success)" }}>已完成</span>
+                            <span className="text-xs" style={{ color: "var(--success)" }}>{t("upload.done")}</span>
                           )}
 
                           {doc.status === "error" && (
-                            <span className="text-xs" style={{ color: "var(--error)" }}>出错</span>
+                            <span className="text-xs" style={{ color: "var(--error)" }}>{t("common.error")}</span>
                           )}
 
                           <button
@@ -334,7 +433,7 @@ export default function UploadPage() {
                             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--error)"; }}
                             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-faint)"; }}
                           >
-                            删除
+                            {t("common.delete")}
                           </button>
                         </div>
                       </td>
@@ -350,7 +449,7 @@ export default function UploadPage() {
                 className="flex items-center justify-between px-4 py-3 text-xs"
                 style={{ borderTop: "1px solid var(--border-light)", color: "var(--text-muted)" }}
               >
-                <span>{docs.length} 个文档 · 第 {page}/{totalPages} 页</span>
+                <span>{t("upload.pagination", { total: docs.length, page, pages: totalPages })}</span>
                 <div className="flex gap-1">
                   <button
                     onClick={() => setPage(Math.max(1, page - 1))}
@@ -358,7 +457,7 @@ export default function UploadPage() {
                     className="btn-secondary text-xs"
                     style={{ padding: "4px 10px" }}
                   >
-                    上一页
+                    {t("upload.prev_page")}
                   </button>
                   <button
                     onClick={() => setPage(Math.min(totalPages, page + 1))}
@@ -366,7 +465,7 @@ export default function UploadPage() {
                     className="btn-secondary text-xs"
                     style={{ padding: "4px 10px" }}
                   >
-                    下一页
+                    {t("upload.next_page")}
                   </button>
                 </div>
               </div>
@@ -374,6 +473,87 @@ export default function UploadPage() {
           </>
         )}
       </div>
+
+      {/* Preview modal */}
+      {(previewLoading || previewSections) && (
+        <div
+          onClick={() => { setPreviewDoc(null); setPreviewSections(null); }}
+          style={{
+            position: "fixed", inset: 0, zIndex: 999,
+            background: "rgba(0,0,0,0.3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "2rem",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--bg-card)",
+              borderRadius: 16,
+              maxWidth: 800, width: "100%",
+              maxHeight: "80vh",
+              display: "flex", flexDirection: "column",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "1rem 1.25rem",
+                borderBottom: "1px solid var(--border-light)",
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium" style={{ color: "var(--text)" }}>
+                  {previewDoc?.filename || t("upload.preview_loading")}
+                </span>
+                {previewDoc?.source_lang && (
+                  <span className="badge text-xs" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+                    {previewDoc.source_lang.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => { setPreviewDoc(null); setPreviewSections(null); }}
+                className="text-sm px-2 py-1 rounded-md hover:opacity-70"
+                style={{ color: "var(--text-faint)" }}
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              style={{
+                padding: "1.25rem",
+                overflowY: "auto",
+                flex: 1,
+              }}
+            >
+              {previewLoading && (
+                <div className="text-center py-10 text-sm" style={{ color: "var(--text-faint)" }}>
+                  {t("upload.preview_loading")}
+                </div>
+              )}
+              {!previewLoading && previewSections?.length === 0 && (
+                <div className="text-center py-10 text-sm" style={{ color: "var(--text-muted)" }}>
+                  {t("upload.preview_empty")}
+                </div>
+              )}
+              {!previewLoading && previewSections?.map((sec: any, i: number) => (
+                <div key={i} style={{ marginBottom: "1.5rem" }}>
+                  {sec.heading && (
+                    <h3 style={{ fontSize: Math.max(14, 20 - sec.level * 2) as any, color: "var(--text)", fontWeight: 600, marginBottom: "0.375rem" }}>
+                      {sec.heading}
+                    </h3>
+                  )}
+                  <p style={{ fontSize: "0.8125rem", lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--text-muted)", margin: 0 }}>{sec.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

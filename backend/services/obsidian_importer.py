@@ -142,6 +142,20 @@ def _cleanup_previous_edges(db: Session, vault_path: str):
     return deleted
 
 
+def _extract_heading_body(body_text: str, heading: "Heading", all_headings: list) -> str:
+    """Extract the text under a heading up to the next heading of equal or higher level."""
+    lines = body_text.splitlines()
+    start = heading.line  # heading.line is 1-based, so lines[heading.line] is first body line
+    end = len(lines)
+    for h in all_headings:
+        if h.line > heading.line and h.level <= heading.level:
+            end = h.line - 1
+            break
+    snippet_lines = lines[start:end]
+    snippet = "\n".join(l for l in snippet_lines if l.strip()).strip()
+    return snippet[:400] if snippet else ""
+
+
 def import_obsidian_vault(
     db: Session,
     vault_path: str,
@@ -213,12 +227,16 @@ def import_obsidian_vault(
                 # Headings → HEADING nodes + CONTAINS edges
                 for h in parsed.headings:
                     heading_stable = f"{parsed.stable_key}#heading-{h.line}"
+                    heading_body = _extract_heading_body(parsed.body_text, h, parsed.headings)
                     heading_node = _upsert_node(
                         db,
                         node_type=NODE_HEADING,
                         stable_key=heading_stable,
                         label=h.text,
-                        metadata={"level": h.level, "line": h.line},
+                        content_snippet=heading_body or None,
+                        metadata={"level": h.level, "line": h.line,
+                                  "note_title": parsed.title,
+                                  "relative_path": parsed.relative_path},
                     )
                     db.flush()
                     _ensure_edge(
@@ -237,10 +255,14 @@ def import_obsidian_vault(
                         node_type=NODE_WIKILINK_TARGET,
                         stable_key=wl_stable,
                         label=wl.alias or wl.target,
+                        content_snippet=f"「{parsed.title}」中的链接，指向：{wl.target}"
+                                        + (f"#{wl.heading}" if wl.heading else "")
+                                        + (f"（别名：{wl.alias}）" if wl.alias else ""),
                         metadata={
                             "target": wl.target,
                             "alias": wl.alias,
                             "heading_anchor": wl.heading,
+                            "source_note": parsed.title,
                         },
                     )
                     db.flush()
@@ -261,6 +283,7 @@ def import_obsidian_vault(
                         node_type=NODE_TAG,
                         stable_key=tag_stable,
                         label=f"#{tag_name}",
+                        content_snippet=f"标签 #{tag_name}，出现于「{parsed.title}」",
                     )
                     db.flush()
                     _ensure_edge(
@@ -279,6 +302,7 @@ def import_obsidian_vault(
                         node_type=NODE_ALIAS,
                         stable_key=alias_stable,
                         label=alias,
+                        content_snippet=f"「{parsed.title}」的别名：{alias}",
                     )
                     db.flush()
                     _ensure_edge(

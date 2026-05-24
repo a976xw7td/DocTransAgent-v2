@@ -1,15 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useStreamingQA } from "@/hooks/useStreamingQA";
 
-const SAMPLE_QUESTIONS = [
-  "产品需要哪些欧盟认证？",
-  "What certifications do we need?",
-  "技术规格中的安全标准是什么？",
-];
-
 export default function QAPage() {
+  const { t } = useTranslation();
   const { messages, isStreaming, ask, clearMessages } = useStreamingQA("demo");
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -39,10 +35,10 @@ export default function QAPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>
-            智能问答
+            {t("qa.page_title")}
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            跨语言 RAG · 带来源引用的精准回答
+            {t("qa.page_subtitle")}
           </p>
         </div>
         {messages.length > 0 && (
@@ -51,7 +47,7 @@ export default function QAPage() {
             className="btn-secondary text-xs"
             disabled={isStreaming}
           >
-            清空对话
+            {t("qa.clear_chat")}
           </button>
         )}
       </div>
@@ -67,13 +63,13 @@ export default function QAPage() {
               ◎
             </div>
             <p className="text-base font-semibold mb-1" style={{ color: "var(--text)" }}>
-              向知识库提问
+              {t("qa.empty_title")}
             </p>
             <p className="text-sm mb-6 max-w-xs" style={{ color: "var(--text-muted)" }}>
-              支持中英文混合提问，回答带原文段落引用
+              {t("qa.empty_desc")}
             </p>
             <div className="flex flex-col gap-2 w-full max-w-sm">
-              {SAMPLE_QUESTIONS.map((q) => (
+              {[t("qa.sample_q1"), t("qa.sample_q2"), t("qa.sample_q3")].map((q) => (
                 <button
                   key={q}
                   onClick={() => handleSample(q)}
@@ -167,7 +163,7 @@ export default function QAPage() {
           ref={inputRef}
           className="flex-1 bg-transparent text-sm outline-none"
           style={{ color: "var(--text)", fontFamily: "var(--font-sans)" }}
-          placeholder="向知识库提问，支持中英文..."
+          placeholder={t("qa.input_placeholder")}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={isStreaming}
@@ -181,9 +177,9 @@ export default function QAPage() {
           {isStreaming ? (
             <>
               <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              回复中
+              {t("qa.responding")}
             </>
-          ) : "发送"}
+          ) : t("common.send")}
         </button>
       </form>
     </div>

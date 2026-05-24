@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { glossaryApi } from "@/lib/api";
 
 interface GlossaryItem {
@@ -12,6 +13,7 @@ interface GlossaryItem {
 }
 
 export default function GlossaryPage() {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<GlossaryItem[]>([]);
   const [sourceTerm, setSourceTerm] = useState("");
   const [targetTerm, setTargetTerm] = useState("");
@@ -38,7 +40,7 @@ export default function GlossaryPage() {
       setCategory("");
       loadEntries();
     } catch (err) {
-      alert("Failed: " + (err instanceof Error ? err.message : "Unexpected error"));
+      alert(t("glossary.alert_failed", { message: err instanceof Error ? err.message : "Unexpected error" }));
     } finally {
       setAdding(false);
     }
@@ -53,7 +55,7 @@ export default function GlossaryPage() {
 
   // Group by category
   const grouped = entries.reduce<Record<string, GlossaryItem[]>>((acc, e) => {
-    const cat = e.category || "未分类";
+    const cat = e.category || t("glossary.uncategorized");
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(e);
     return acc;
@@ -63,9 +65,9 @@ export default function GlossaryPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">术语表管理</h1>
+          <h1 className="text-2xl font-bold">{t("glossary.page_title")}</h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            管理企业品牌术语、产品名称、技术词汇的标准翻译，确保翻译一致性
+            {t("glossary.page_subtitle")}
           </p>
         </div>
         <select
@@ -74,48 +76,47 @@ export default function GlossaryPage() {
           className="text-sm rounded-lg px-3 py-1.5 border"
           style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text)" }}
         >
-          <option value="default">默认项目</option>
-          <option value="product">产品文档</option>
-          <option value="brand">品牌材料</option>
-          <option value="compliance">合规文档</option>
-          <option value="legal">法务文件</option>
+          <option value="default">{t("glossary.project_default")}</option>
+          <option value="product">{t("glossary.project_product")}</option>
+          <option value="brand">{t("glossary.project_brand")}</option>
+          <option value="compliance">{t("glossary.project_compliance")}</option>
+          <option value="legal">{t("glossary.project_legal")}</option>
         </select>
       </div>
 
       {/* Add form */}
       <form onSubmit={handleAdd} className="card">
-        <h3 className="font-semibold mb-3">添加术语</h3>
+        <h3 className="font-semibold mb-3">{t("glossary.add_title")}</h3>
         <div className="grid grid-cols-3 gap-3">
           <input
             className="input"
-            placeholder="源术语 (中文)"
+            placeholder={t("glossary.source_placeholder")}
             value={sourceTerm}
             onChange={(e) => setSourceTerm(e.target.value)}
           />
           <input
             className="input"
-            placeholder="目标翻译 (English)"
+            placeholder={t("glossary.target_placeholder")}
             value={targetTerm}
             onChange={(e) => setTargetTerm(e.target.value)}
           />
           <input
             className="input"
-            placeholder="分类 (可选)"
+            placeholder={t("glossary.category_placeholder")}
             value={category}
             onChange={(e) => setCategory(e.target.value)}
           />
         </div>
         <button type="submit" disabled={adding} className="btn-primary text-sm mt-3">
-          {adding ? "添加中..." : "添加术语"}
+          {adding ? t("glossary.adding") : t("glossary.add_btn")}
         </button>
       </form>
 
       {/* Glossary list grouped by category */}
       {Object.keys(grouped).length === 0 ? (
         <div className="card text-center py-12" style={{ color: "var(--text-muted)" }}>
-          <p className="text-lg font-medium mb-1">Glossary is empty</p>
-          <p>术语表为空</p>
-          <p className="text-sm mt-1">添加企业专属术语确保品牌翻译一致性</p>
+          <p className="text-lg font-medium mb-1">{t("glossary.empty_title")}</p>
+          <p className="text-sm mt-1">{t("glossary.empty_desc")}</p>
         </div>
       ) : (
         Object.entries(grouped).map(([cat, items]) => (
@@ -134,7 +135,7 @@ export default function GlossaryPage() {
                     className="text-xs opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    删除
+                    {t("glossary.delete_btn")}
                   </button>
                 </div>
               ))}
